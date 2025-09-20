@@ -9,5 +9,26 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U todo -d todo_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    image: migrate/migrate:latest
+    volumes:
+      - ./migrations:/migrations
+    command: ["-path", "/migrations", "-database", "postgres://todo:todo_pass@db:5432/todo_db?sslmode=disable", "up"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_USER: todo
+      DB_PASSWORD: todo_pass
+      DB_NAME: todo_db
+      DB_HOST: db
+      DB_PORT: 5432
+
 volumes:
   pgdata:
