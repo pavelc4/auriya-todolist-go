@@ -7,7 +7,7 @@ type CreateTaskRequest struct {
 	Description *string    `json:"description" binding:"omitempty"`
 	Status      *string    `json:"status" binding:"omitempty,oneof=pending in_progress done"`
 	Priority    *int32     `json:"priority" binding:"omitempty,min=1,max=5"`
-	DueDate     *time.Time `json:"due_date" binding:"omitempty"`
+	DueDate     *time.Time `json:"due_date" binding:"omitempty"` // RFC3339
 }
 
 type UpdateTaskRequest struct {
@@ -18,9 +18,9 @@ type UpdateTaskRequest struct {
 	DueDate     *time.Time `json:"due_date" binding:"omitempty"`
 }
 
-type ListTasksRequest struct {
+type ListTasksQuery struct {
 	Status    *string    `form:"status" binding:"omitempty,oneof=pending in_progress done"`
-	DueBefore *time.Time `form:"due_before" binding:"omitempty"`
+	DueBefore *time.Time `form:"due_before" binding:"omitempty"` // RFC3339
 	Limit     int32      `form:"limit,default=20" binding:"min=1,max=100"`
 	Page      int32      `form:"page,default=1" binding:"min=1"`
 }

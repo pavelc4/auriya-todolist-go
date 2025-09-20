@@ -1,0 +1,29 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    schema: "migrations"
+    queries: "sql/queries"
+    gen:
+      go:
+        package: "db"
+        out: "internal/db/sqlc"
+        sql_package: "pgx/v5"
+        overrides:
+          - db_type: "text"
+            go_type:
+              type: "string"
+          - db_type: "text"
+            nullable: true
+            go_type:
+              type: "string"
+              pointer: true
+          - db_type: "pg_catalog.timestamptz"
+            go_type:
+              import: "time"
+              type: "Time"
+          - db_type: "pg_catalog.timestamptz"
+            nullable: true
+            go_type:
+              import: "time"
+              type: "Time"
+              pointer: true

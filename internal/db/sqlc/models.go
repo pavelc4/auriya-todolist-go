@@ -5,16 +5,18 @@
 package db
 
 import (
+	"time"
+
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Task struct {
 	ID          int64              `json:"id"`
 	Title       string             `json:"title"`
-	Description pgtype.Text        `json:"description"`
+	Description string             `json:"description"`
 	Status      string             `json:"status"`
 	Priority    int32              `json:"priority"`
-	DueDate     pgtype.Timestamptz `json:"due_date"`
+	DueDate     time.Time          `json:"due_date"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
