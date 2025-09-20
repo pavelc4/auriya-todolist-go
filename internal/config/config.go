@@ -5,25 +5,39 @@ import (
 	"strconv"
 
 	"github.com/joho/godotenv"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
 )
 
 type Config struct {
-	DatabaseURL string
-	AppPort     int
-	AppEnv      string
+	GoogleOAuthConfig *oauth2.Config
+	DatabaseURL       string
+	AppPort           int
+	AppEnv            string
 }
 
 func Load() (*Config, error) {
 	_ = godotenv.Load()
+
 	port := 8080
 	if v := os.Getenv("APP_PORT"); v != "" {
 		if p, err := strconv.Atoi(v); err == nil {
 			port = p
 		}
 	}
-	return &Config{
+
+	cfg := &Config{
 		DatabaseURL: os.Getenv("DATABASE_URL"),
 		AppPort:     port,
 		AppEnv:      os.Getenv("APP_ENV"),
-	}, nil
+		GoogleOAuthConfig: &oauth2.Config{
+			ClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
+			ClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
+			RedirectURL:  os.Getenv("GOOGLE_REDIRECT_URL"),
+			Scopes:       []string{"openid", "profile", "email"},
+			Endpoint:     google.Endpoint,
+		},
+	}
+
+	return cfg, nil
 }

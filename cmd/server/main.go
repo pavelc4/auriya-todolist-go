@@ -13,7 +13,9 @@ import (
 
 	"github.com/pavelc4/auriya-todolist-go/internal/config"
 	"github.com/pavelc4/auriya-todolist-go/internal/database"
+	"github.com/pavelc4/auriya-todolist-go/internal/http/repository"
 	"github.com/pavelc4/auriya-todolist-go/internal/http/router"
+	"github.com/pavelc4/auriya-todolist-go/internal/http/service"
 )
 
 func main() {
@@ -32,7 +34,11 @@ func main() {
 	}
 	defer db.Close()
 
-	r := router.New(db)
+	googleConf := cfg.GoogleOAuthConfig
+	userRepo := repository.NewUserRepository(db)
+	jwtService := service.NewJWTService(os.Getenv("JWT_SECRET"))
+
+	r := router.New(db, googleConf, userRepo, jwtService)
 
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.AppPort),

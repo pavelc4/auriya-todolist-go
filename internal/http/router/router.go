@@ -6,9 +6,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pavelc4/auriya-todolist-go/internal/http/handler"
 	"github.com/pavelc4/auriya-todolist-go/internal/http/repository"
+	"github.com/pavelc4/auriya-todolist-go/internal/http/service"
+	"golang.org/x/oauth2"
 )
 
-func New(db *pgxpool.Pool) *gin.Engine {
+func New(db *pgxpool.Pool, googleConf *oauth2.Config, userRepo *repository.UserRepository, jwtService *service.JWTService) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
@@ -26,16 +28,19 @@ func New(db *pgxpool.Pool) *gin.Engine {
 
 	store := repository.NewStore(db)
 	task := handler.NewTaskHandler(store)
+	auth := handler.NewAuthHandler(googleConf, userRepo, jwtService)
+
+	// auth routes
+	r.GET("/auth/google/login", auth.GoogleLogin)
+	r.GET("/auth/google/callback", auth.GoogleCallback)
 
 	api := r.Group("/api")
 	{
-
 		api.POST("/tasks", task.Create)
 		api.GET("/tasks/:id", task.Get)
 		api.GET("/tasks", task.List)
 		api.PATCH("/tasks/:id", task.Update)
 		api.DELETE("/tasks/:id", task.Delete)
-
 	}
 
 	r.NoRoute(func(c *gin.Context) {
