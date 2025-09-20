@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"database/sql"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -169,4 +171,36 @@ func (h *TaskHandler) Delete(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+func UpdateTaskHandler(store db.Querier) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		idStr := c.Param("id")
+		id, err := strconv.Atoi(idStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+			return
+		}
+
+		var req db.UpdateTaskParams
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		req.ID = int64(id)
+
+		task, err := store.UpdateTask(c, req)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				// Task tidak ditemukan → 404
+				c.JSON(http.StatusNotFound, gin.H{"error": "task not found"})
+				return
+			}
+			// Error lain → 500
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+			return
+		}
+
+		c.JSON(http.StatusOK, task)
+	}
 }
