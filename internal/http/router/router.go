@@ -36,6 +36,9 @@ func New(db *pgxpool.Pool, googleConf *oauth2.Config, userRepo *repository.UserR
 
 	api := r.Group("/api")
 	{
+		api.POST("/register", auth.Register)
+		api.POST("/login", auth.Login)
+
 		api.POST("/tasks", task.Create)
 		api.GET("/tasks/:id", task.Get)
 		api.GET("/tasks", task.List)

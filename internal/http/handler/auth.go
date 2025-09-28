@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/pavelc4/auriya-todolist-go/internal/http/repository"
 	"github.com/pavelc4/auriya-todolist-go/internal/http/service"
+	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/oauth2"
 )
 
@@ -25,14 +26,14 @@ func NewAuthHandler(googleConfig *oauth2.Config, userRepo *repository.UserReposi
 	}
 }
 
-// Redirect to login page Google
+// Google Login redirect
 func (h *AuthHandler) GoogleLogin(c *gin.Context) {
-	state := "random"
+	state := "randomstate" // ideally use a random string and store in session
 	url := h.GoogleConfig.AuthCodeURL(state, oauth2.AccessTypeOffline)
 	c.Redirect(http.StatusTemporaryRedirect, url)
 }
 
-// Callback dan exchange token from Google
+// Google callback handler
 func (h *AuthHandler) GoogleCallback(c *gin.Context) {
 	code := c.Query("code")
 	if code == "" {
@@ -46,7 +47,6 @@ func (h *AuthHandler) GoogleCallback(c *gin.Context) {
 		return
 	}
 
-	// Colect data profil user from Google API
 	client := h.GoogleConfig.Client(c.Request.Context(), token)
 	resp, err := client.Get("https://www.googleapis.com/oauth2/v3/userinfo")
 	if err != nil || resp.StatusCode != http.StatusOK {
@@ -73,9 +73,13 @@ func (h *AuthHandler) GoogleCallback(c *gin.Context) {
 		return
 	}
 
-	// Save update user on  database
 	user, err := h.UserRepo.GetByProviderUserID(c.Request.Context(), "google", profile.Sub)
 	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error", "detail": err.Error()})
+		return
+	}
+
+	if user == nil {
 		user = &repository.User{
 			Email:          profile.Email,
 			FullName:       profile.Name,
@@ -83,19 +87,118 @@ func (h *AuthHandler) GoogleCallback(c *gin.Context) {
 			Provider:       "google",
 			ProviderUserID: profile.Sub,
 		}
-		_ = h.UserRepo.Create(c.Request.Context(), user)
+		err = h.UserRepo.Create(c.Request.Context(), user)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "user create failed", "detail": err.Error()})
+			return
+		}
 	} else {
 		_ = h.UserRepo.UpdateLastLogin(c.Request.Context(), user.ID)
 	}
-	// Create JWT token
-	jwtToken, err := h.JWTService.GenerateToken(user.ID)
+
+	tokenString, err := h.JWTService.GenerateToken(user.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"token": jwtToken,
+		"token": tokenString,
+		"user":  user,
+	})
+}
+
+// Manual Register handler
+func (h *AuthHandler) Register(c *gin.Context) {
+	var req RegisterUserRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "detail": err.Error()})
+		return
+	}
+
+	hashed, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "hash_failed"})
+		return
+	}
+
+	user := &repository.User{
+		Email:          req.Email,
+		FullName:       req.FullName,
+		Age:            req.Age,
+		Password:       string(hashed),
+		Provider:       "local",
+		ProviderUserID: req.Email,
+	}
+
+	existingUser, err := h.UserRepo.GetByEmail(c.Request.Context(), req.Email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error", "detail": err.Error()})
+		return
+	}
+	if existingUser != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "user_exists"})
+		return
+	}
+
+	err = h.UserRepo.Create(c.Request.Context(), user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "user_create_failed", "detail": err.Error()})
+		return
+	}
+
+	tokenString, err := h.JWTService.GenerateToken(user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "register success",
+		"token":   tokenString,
+		"user":    user,
+	})
+}
+
+// Manual login handler
+func (h *AuthHandler) Login(c *gin.Context) {
+	var req LoginUserRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "detail": err.Error()})
+		return
+	}
+
+	user, err := h.UserRepo.GetByEmail(c.Request.Context(), req.Email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error", "detail": err.Error()})
+		return
+	}
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_credentials"})
+		return
+	}
+
+	if user.Provider != "local" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "use_oauth_login"})
+		return
+	}
+
+	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password))
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_credentials"})
+		return
+	}
+
+	_ = h.UserRepo.UpdateLastLogin(c.Request.Context(), user.ID)
+
+	tokenString, err := h.JWTService.GenerateToken(user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"token": tokenString,
 		"user":  user,
 	})
 }
