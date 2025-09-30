@@ -10,7 +10,7 @@ import (
 	"golang.org/x/oauth2"
 )
 
-func New(db *pgxpool.Pool, googleConf *oauth2.Config, userRepo *repository.UserRepository, jwtService *service.JWTService) *gin.Engine {
+func New(db *pgxpool.Pool, googleConf, githubConf *oauth2.Config, userRepo *repository.UserRepository, jwtService *service.JWTService) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
@@ -28,7 +28,7 @@ func New(db *pgxpool.Pool, googleConf *oauth2.Config, userRepo *repository.UserR
 
 	store := repository.NewStore(db)
 	task := handler.NewTaskHandler(store)
-	auth := handler.NewAuthHandler(googleConf, userRepo, jwtService)
+	auth := handler.NewAuthHandler(googleConf, githubConf, userRepo, jwtService)
 
 	// auth routes
 	// Google

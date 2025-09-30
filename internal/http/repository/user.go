@@ -10,17 +10,17 @@ import (
 )
 
 type User struct {
-	ID             int64
-	Email          string
-	FullName       string
-	Age            int
-	Password       string
-	AvatarURL      string
-	Provider       string
-	ProviderUserID string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-	LastLogin      *time.Time
+	ID             int64      `json:"id"`
+	Email          string     `json:"email"`
+	FullName       string     `json:"full_name"`
+	Age            int        `json:"age"`
+	Password       string     `json:"-"`
+	AvatarURL      string     `json:"avatar_url"`
+	Provider       string     `json:"provider"`
+	ProviderUserID string     `json:"provider_user_id"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+	LastLogin      *time.Time `json:"last_login,omitempty"`
 }
 
 type UserRepository struct {
