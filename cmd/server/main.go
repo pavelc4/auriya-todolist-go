@@ -35,10 +35,11 @@ func main() {
 	defer db.Close()
 
 	googleConf := cfg.GoogleOAuthConfig
+	githubConf := cfg.GitHubOAuthConfig
 	userRepo := repository.NewUserRepository(db)
 	jwtService := service.NewJWTService(os.Getenv("JWT_SECRET"))
 
-	r := router.New(db, googleConf, userRepo, jwtService)
+	r := router.New(db, googleConf, githubConf, userRepo, jwtService)
 
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.AppPort),

@@ -6,11 +6,13 @@ import (
 
 	"github.com/joho/godotenv"
 	"golang.org/x/oauth2"
+	oauth2github "golang.org/x/oauth2/github"
 	"golang.org/x/oauth2/google"
 )
 
 type Config struct {
 	GoogleOAuthConfig *oauth2.Config
+	GitHubOAuthConfig *oauth2.Config
 	DatabaseURL       string
 	AppPort           int
 	AppEnv            string
@@ -36,6 +38,13 @@ func Load() (*Config, error) {
 			RedirectURL:  os.Getenv("GOOGLE_REDIRECT_URL"),
 			Scopes:       []string{"openid", "profile", "email"},
 			Endpoint:     google.Endpoint,
+		},
+		GitHubOAuthConfig: &oauth2.Config{
+			ClientID:     os.Getenv("GITHUB_CLIENT_ID"),
+			ClientSecret: os.Getenv("GITHUB_CLIENT_SECRET"),
+			RedirectURL:  os.Getenv("GITHUB_REDIRECT_URL"),
+			Scopes:       []string{"user.:email"},
+			Endpoint:     oauth2github.Endpoint,
 		},
 	}
 

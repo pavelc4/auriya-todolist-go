@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/pavelc4/auriya-todolist-go/internal/http/repository"
@@ -14,16 +15,29 @@ import (
 
 type AuthHandler struct {
 	GoogleConfig *oauth2.Config
+	GitHubConfig *oauth2.Config
 	UserRepo     *repository.UserRepository
 	JWTService   *service.JWTService
 }
 
-func NewAuthHandler(googleConfig *oauth2.Config, userRepo *repository.UserRepository, jwtService *service.JWTService) *AuthHandler {
+func NewAuthHandler(
+	googleConfig *oauth2.Config,
+	githubConfig *oauth2.Config,
+	userRepo *repository.UserRepository,
+	jwtService *service.JWTService,
+) *AuthHandler {
 	return &AuthHandler{
 		GoogleConfig: googleConfig,
+		GitHubConfig: githubConfig,
 		UserRepo:     userRepo,
 		JWTService:   jwtService,
 	}
+}
+
+func (h *AuthHandler) GitHubLogin(c *gin.Context) {
+	state := "randomstate"
+	url := h.GitHubConfig.AuthCodeURL(state, oauth2.AccessTypeOffline)
+	c.Redirect(http.StatusTemporaryRedirect, url)
 }
 
 // Google Login redirect
@@ -96,6 +110,74 @@ func (h *AuthHandler) GoogleCallback(c *gin.Context) {
 		_ = h.UserRepo.UpdateLastLogin(c.Request.Context(), user.ID)
 	}
 
+	tokenString, err := h.JWTService.GenerateToken(user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"token": tokenString,
+		"user":  user,
+	})
+}
+func (h *AuthHandler) GitHubCallback(c *gin.Context) {
+	code := c.Query("code")
+	if code == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing code"})
+		return
+	}
+
+	token, err := h.GitHubConfig.Exchange(c.Request.Context(), code)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "token exchange failed"})
+		return
+	}
+
+	client := h.GitHubConfig.Client(c.Request.Context(), token)
+	resp, err := client.Get("https://api.github.com/user")
+	if err != nil || resp.StatusCode != http.StatusOK {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get user info"})
+		return
+	}
+	defer resp.Body.Close()
+
+	var profile struct {
+		ID        int    `json:"id"`
+		Login     string `json:"login"`
+		Name      string `json:"name"`
+		Email     string `json:"email"`
+		AvatarURL string `json:"avatar_url"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&profile); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid user info"})
+		return
+	}
+
+	// Get user (by provider + provider user id)
+	user, err := h.UserRepo.GetByProviderUserID(c.Request.Context(), "github", strconv.Itoa(profile.ID))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error", "detail": err.Error()})
+		return
+	}
+	if user == nil {
+		user = &repository.User{
+			Email:          profile.Email,
+			FullName:       profile.Name,
+			AvatarURL:      profile.AvatarURL,
+			Provider:       "github",
+			ProviderUserID: strconv.Itoa(profile.ID),
+		}
+		err = h.UserRepo.Create(c.Request.Context(), user)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "user create failed", "detail": err.Error()})
+			return
+		}
+	} else {
+		_ = h.UserRepo.UpdateLastLogin(c.Request.Context(), user.ID)
+	}
+
+	// JWT sama seperti Google
 	tokenString, err := h.JWTService.GenerateToken(user.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})

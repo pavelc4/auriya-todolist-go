@@ -31,8 +31,12 @@ func New(db *pgxpool.Pool, googleConf *oauth2.Config, userRepo *repository.UserR
 	auth := handler.NewAuthHandler(googleConf, userRepo, jwtService)
 
 	// auth routes
+	// Google
 	r.GET("/auth/google/login", auth.GoogleLogin)
 	r.GET("/auth/google/callback", auth.GoogleCallback)
+	// Github
+	r.GET("/auth/github/login", auth.GitHubLogin)
+	r.GET("/auth/github/callback", auth.GitHubCallback)
 
 	api := r.Group("/api")
 	{
