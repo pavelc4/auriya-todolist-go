@@ -1,12 +1,14 @@
-CREATE TABLE IF NOT EXISTS tasks (
+CREATE TABLE tasks (
     id BIGSERIAL PRIMARY KEY,
-    title TEXT NOT NULL,
+    user_id BIGINT NOT NULL,
+    title VARCHAR(255) NOT NULL,
     description TEXT,
-    status TEXT NOT NULL DEFAULT 'pending',
+    status VARCHAR(50) NOT NULL DEFAULT 'pending',
     priority INT NOT NULL DEFAULT 1,
     due_date TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT (now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT (now()),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 ALTER TABLE tasks

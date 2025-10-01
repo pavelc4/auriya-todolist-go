@@ -5,18 +5,31 @@
 package db
 
 import (
-	"time"
-
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Task struct {
 	ID          int64              `json:"id"`
+	UserID      int64              `json:"user_id"`
 	Title       string             `json:"title"`
-	Description string             `json:"description"`
+	Description *string            `json:"description"`
 	Status      string             `json:"status"`
 	Priority    int32              `json:"priority"`
-	DueDate     time.Time          `json:"due_date"`
+	DueDate     pgtype.Timestamptz `json:"due_date"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type User struct {
+	ID             int64              `json:"id"`
+	Email          string             `json:"email"`
+	FullName       pgtype.Text        `json:"full_name"`
+	Provider       string             `json:"provider"`
+	ProviderUserID string             `json:"provider_user_id"`
+	Password       *string            `json:"password"`
+	Age            pgtype.Int4        `json:"age"`
+	AvatarUrl      *string            `json:"avatar_url"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	LastLogin      pgtype.Timestamptz `json:"last_login"`
 }

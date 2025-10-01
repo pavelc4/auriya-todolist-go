@@ -5,6 +5,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pavelc4/auriya-todolist-go/internal/http/handler"
+	"github.com/pavelc4/auriya-todolist-go/internal/http/middleware"
 	"github.com/pavelc4/auriya-todolist-go/internal/http/repository"
 	"github.com/pavelc4/auriya-todolist-go/internal/http/service"
 	"golang.org/x/oauth2"
@@ -39,15 +40,20 @@ func New(db *pgxpool.Pool, googleConf, githubConf *oauth2.Config, userRepo *repo
 	r.GET("/auth/github/callback", auth.GitHubCallback)
 
 	api := r.Group("/api")
+	api.Use(middleware.RateLimiter()) // Apply rate limiter middleware
 	{
 		api.POST("/register", auth.Register)
 		api.POST("/login", auth.Login)
 
-		api.POST("/tasks", task.Create)
-		api.GET("/tasks/:id", task.Get)
-		api.GET("/tasks", task.List)
-		api.PATCH("/tasks/:id", task.Update)
-		api.DELETE("/tasks/:id", task.Delete)
+		protected := api.Group("/")
+		protected.Use(middleware.AuthMiddleware(jwtService))
+		{
+			protected.POST("/tasks", task.Create)
+			protected.GET("/tasks/:id", task.Get)
+			protected.GET("/tasks", task.List)
+			protected.PATCH("/tasks/:id", task.Update)
+			protected.DELETE("/tasks/:id", task.Delete)
+		}
 	}
 
 	r.NoRoute(func(c *gin.Context) {

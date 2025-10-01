@@ -3,10 +3,9 @@ package handler
 import (
 	"database/sql"
 	"net/http"
-	"strconv"
-	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgtype"
 	db "github.com/pavelc4/auriya-todolist-go/internal/db/sqlc"
 	"github.com/pavelc4/auriya-todolist-go/internal/http/repository"
 )
@@ -26,26 +25,20 @@ func (h *TaskHandler) Create(c *gin.Context) {
 		return
 	}
 
-	// nilai default jika kosong
-	status := "pending"
-	if req.Status != nil {
-		status = *req.Status
-	}
-	priority := int32(1)
-	if req.Priority != nil {
-		priority = *req.Priority
-	}
-	var due time.Time
+	userID, _ := c.Get("userID")
+
+	var dueDate pgtype.Timestamptz
 	if req.DueDate != nil {
-		due = *req.DueDate
+		dueDate = pgtype.Timestamptz{Time: *req.DueDate, Valid: true}
 	}
 
 	arg := db.CreateTaskParams{
-		Title:       req.Title,                 // string
-		Description: sval(req.Description, ""), // string
-		Status:      status,                    // string
-		Priority:    priority,                  // int32
-		DueDate:     due,                       // time.Time
+		Title:       req.Title,
+		Description: req.Description,
+		Status:      req.Status,
+		Priority:    req.Priority,
+		DueDate:     dueDate,
+		UserID:      userID.(int64),
 	}
 
 	task, err := h.Store.Queries.CreateTask(c.Request.Context(), arg)
@@ -56,26 +49,6 @@ func (h *TaskHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, task)
 }
 
-// helper konversi pointer -> nilai
-func sval(p *string, def string) string {
-	if p == nil {
-		return def
-	}
-	return *p
-}
-func ival(p *int32, def int32) int32 {
-	if p == nil {
-		return def
-	}
-	return *p
-}
-func tval(p *time.Time) time.Time {
-	if p == nil {
-		return time.Time{}
-	}
-	return *p
-}
-
 func (h *TaskHandler) Get(c *gin.Context) {
 	var uri struct {
 		ID int64 `uri:"id" binding:"required,min=1"`
@@ -84,9 +57,21 @@ func (h *TaskHandler) Get(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_id", "detail": err.Error()})
 		return
 	}
-	task, err := h.Store.Queries.GetTask(c.Request.Context(), uri.ID)
+
+	userID, _ := c.Get("userID")
+
+	arg := db.GetTaskParams{
+		ID:     uri.ID,
+		UserID: userID.(int64),
+	}
+
+	task, err := h.Store.Queries.GetTask(c.Request.Context(), arg)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "not_found"})
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "not_found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "db_error", "detail": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, task)
@@ -99,20 +84,17 @@ func (h *TaskHandler) List(c *gin.Context) {
 		return
 	}
 	offset := (q.Page - 1) * q.Limit
+	userID, _ := c.Get("userID")
 
-	// ubah pointer -> nilai untuk Params yang butuh value
-	var status string
-	if q.Status != nil {
-		status = *q.Status
-	}
-	var dueBefore time.Time
+	var dueBefore pgtype.Timestamptz
 	if q.DueBefore != nil {
-		dueBefore = *q.DueBefore
+		dueBefore = pgtype.Timestamptz{Time: *q.DueBefore, Valid: true}
 	}
 
 	items, err := h.Store.Queries.ListTasks(c.Request.Context(), db.ListTasksParams{
-		Status:    status,    // string
-		DueBefore: dueBefore, // time.Time
+		UserID:    userID.(int64),
+		Status:    q.Status,
+		DueBefore: dueBefore,
 		Limit:     q.Limit,
 		Offset:    offset,
 	})
@@ -142,16 +124,40 @@ func (h *TaskHandler) Update(c *gin.Context) {
 		return
 	}
 
+	userID, _ := c.Get("userID")
+
+	var title pgtype.Text
+	if req.Title != nil {
+		title = pgtype.Text{String: *req.Title, Valid: true}
+	}
+	var status pgtype.Text
+	if req.Status != nil {
+		status = pgtype.Text{String: *req.Status, Valid: true}
+	}
+	var priority pgtype.Int4
+	if req.Priority != nil {
+		priority = pgtype.Int4{Int32: *req.Priority, Valid: true}
+	}
+	var dueDate pgtype.Timestamptz
+	if req.DueDate != nil {
+		dueDate = pgtype.Timestamptz{Time: *req.DueDate, Valid: true}
+	}
+
 	arg := db.UpdateTaskParams{
 		ID:          uri.ID,
-		Title:       sval(req.Title, ""),       // string
-		Description: sval(req.Description, ""), // string
-		Status:      sval(req.Status, ""),      // string
-		Priority:    ival(req.Priority, 0),     // int32
-		DueDate:     tval(req.DueDate),         // time.Time
+		UserID:      userID.(int64),
+		Title:       title,
+		Description: req.Description,
+		Status:      status,
+		Priority:    priority,
+		DueDate:     dueDate,
 	}
 	task, err := h.Store.Queries.UpdateTask(c.Request.Context(), arg)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "not_found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "db_error", "detail": err.Error()})
 		return
 	}
@@ -166,41 +172,17 @@ func (h *TaskHandler) Delete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_id", "detail": err.Error()})
 		return
 	}
-	if err := h.Store.Queries.DeleteTask(c.Request.Context(), uri.ID); err != nil {
+
+	userID, _ := c.Get("userID")
+
+	arg := db.DeleteTaskParams{
+		ID:     uri.ID,
+		UserID: userID.(int64),
+	}
+
+	if err := h.Store.Queries.DeleteTask(c.Request.Context(), arg); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "db_error", "detail": err.Error()})
 		return
 	}
 	c.Status(http.StatusNoContent)
-}
-func UpdateTaskHandler(store db.Querier) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		idStr := c.Param("id")
-		id, err := strconv.Atoi(idStr)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
-			return
-		}
-
-		var req db.UpdateTaskParams
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-
-		req.ID = int64(id)
-
-		task, err := store.UpdateTask(c, req)
-		if err != nil {
-			if err == sql.ErrNoRows {
-				// Task tidak ditemukan → 404
-				c.JSON(http.StatusNotFound, gin.H{"error": "task not found"})
-				return
-			}
-			// Error lain → 500
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
-			return
-		}
-
-		c.JSON(http.StatusOK, task)
-	}
 }
