@@ -3,6 +3,7 @@ package handler
 import (
 	"database/sql"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -18,6 +19,17 @@ func NewTaskHandler(store *repository.Store) *TaskHandler {
 	return &TaskHandler{Store: store}
 }
 
+// @Summary      Create a new task
+// @Description  Adds a new task to the user's todolist
+// @Tags         tasks
+// @Accept       json
+// @Produce      json
+// @Param        task  body      CreateTaskRequest  true  "Task to create"
+// @Success      201   {object}  TaskResponse
+// @Failure      400   {object}  ErrorResponse
+// @Failure      500   {object}  ErrorResponse
+// @Security     BearerAuth
+// @Router       /tasks [post]
 func (h *TaskHandler) Create(c *gin.Context) {
 	var req CreateTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -46,7 +58,25 @@ func (h *TaskHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "db_error", "detail": err.Error()})
 		return
 	}
-	c.JSON(http.StatusCreated, task)
+
+	var dueDatePtr *time.Time
+	if task.DueDate.Valid {
+		dueDatePtr = &task.DueDate.Time
+	}
+
+	resp := TaskResponse{
+		ID:          task.ID,
+		UserID:      task.UserID,
+		Title:       task.Title,
+		Description: task.Description,
+		Status:      task.Status,
+		Priority:    task.Priority,
+		DueDate:     dueDatePtr,
+		CreatedAt:   task.CreatedAt.Time,
+		UpdatedAt:   task.UpdatedAt.Time,
+	}
+
+	c.JSON(http.StatusCreated, resp)
 }
 
 func (h *TaskHandler) Get(c *gin.Context) {

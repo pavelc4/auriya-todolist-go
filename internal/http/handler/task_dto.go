@@ -24,3 +24,15 @@ type ListTasksQuery struct {
 	Limit     int32      `form:"limit,default=20" binding:"min=1,max=100"`
 	Page      int32      `form:"page,default=1" binding:"min=1"`
 }
+
+type TaskResponse struct {
+	ID          int64      `json:"id"`
+	UserID      int64      `json:"user_id"`
+	Title       string     `json:"title"`
+	Description *string    `json:"description"`
+	Status      string     `json:"status"`
+	Priority    int32      `json:"priority"`
+	DueDate     *time.Time `json:"due_date"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+}
