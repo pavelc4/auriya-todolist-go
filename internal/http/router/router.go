@@ -37,6 +37,7 @@ func New(db *pgxpool.Pool, googleConf, githubConf *oauth2.Config, userRepo *repo
 	store := repository.NewStore(db)
 	task := handler.NewTaskHandler(store, cacheSvc)
 	auth := handler.NewAuthHandler(googleConf, githubConf, userRepo, jwtService)
+	project := handler.NewProjectHandler(store)
 
 	// auth routes
 	// Google
@@ -55,11 +56,20 @@ func New(db *pgxpool.Pool, googleConf, githubConf *oauth2.Config, userRepo *repo
 		protected := api.Group("/")
 		protected.Use(middleware.AuthMiddleware(jwtService))
 		{
+			// Task routes
 			protected.POST("/tasks", task.Create)
 			protected.GET("/tasks/:id", task.Get)
 			protected.GET("/tasks", task.List)
 			protected.PATCH("/tasks/:id", task.Update)
 			protected.DELETE("/tasks/:id", task.Delete)
+
+			// Project routes
+			protected.POST("/projects", project.Create)
+			protected.GET("/projects", project.List)
+			protected.GET("/projects/:id", project.Get)
+			protected.PATCH("/projects/:id", project.Update)
+			protected.DELETE("/projects/:id", project.Delete)
+			protected.GET("/projects/:id/tasks", task.ListByProject) // New route
 		}
 	}
 

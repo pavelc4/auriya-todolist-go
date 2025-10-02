@@ -12,16 +12,17 @@ import (
 )
 
 const createTask = `-- name: CreateTask :one
-INSERT INTO tasks (title, description, status, priority, due_date, user_id)
+INSERT INTO tasks (title, description, status, priority, due_date, user_id, project_id)
 VALUES (
   $1,
   $2,
   COALESCE($3, 'pending'),
   COALESCE($4, 1),
   $5,
-  $6
+  $6,
+  $7
 )
-RETURNING id, user_id, title, description, status, priority, due_date, created_at, updated_at
+RETURNING id, user_id, title, description, status, priority, due_date, created_at, updated_at, project_id
 `
 
 type CreateTaskParams struct {
@@ -31,6 +32,7 @@ type CreateTaskParams struct {
 	Priority    interface{}        `json:"priority"`
 	DueDate     pgtype.Timestamptz `json:"due_date"`
 	UserID      int64              `json:"user_id"`
+	ProjectID   pgtype.Int8        `json:"project_id"`
 }
 
 func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error) {
@@ -41,6 +43,7 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 		arg.Priority,
 		arg.DueDate,
 		arg.UserID,
+		arg.ProjectID,
 	)
 	var i Task
 	err := row.Scan(
@@ -53,6 +56,7 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 		&i.DueDate,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ProjectID,
 	)
 	return i, err
 }
@@ -72,7 +76,7 @@ func (q *Queries) DeleteTask(ctx context.Context, arg DeleteTaskParams) error {
 }
 
 const getTask = `-- name: GetTask :one
-SELECT id, user_id, title, description, status, priority, due_date, created_at, updated_at FROM tasks WHERE id = $1 AND user_id = $2
+SELECT id, user_id, title, description, status, priority, due_date, created_at, updated_at, project_id FROM tasks WHERE id = $1 AND user_id = $2
 `
 
 type GetTaskParams struct {
@@ -93,12 +97,13 @@ func (q *Queries) GetTask(ctx context.Context, arg GetTaskParams) (Task, error) 
 		&i.DueDate,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ProjectID,
 	)
 	return i, err
 }
 
 const listTasks = `-- name: ListTasks :many
-SELECT id, user_id, title, description, status, priority, due_date, created_at, updated_at FROM tasks
+SELECT id, user_id, title, description, status, priority, due_date, created_at, updated_at, project_id FROM tasks
 WHERE user_id = $1
   AND ($2::text IS NULL OR status = $2::text)
   AND ($3::timestamptz IS NULL OR due_date <= $3::timestamptz)
@@ -139,6 +144,49 @@ func (q *Queries) ListTasks(ctx context.Context, arg ListTasksParams) ([]Task, e
 			&i.DueDate,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ProjectID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTasksByProject = `-- name: ListTasksByProject :many
+SELECT id, user_id, title, description, status, priority, due_date, created_at, updated_at, project_id FROM tasks
+WHERE user_id = $1 AND project_id = $2
+ORDER BY created_at DESC
+`
+
+type ListTasksByProjectParams struct {
+	UserID    int64       `json:"user_id"`
+	ProjectID pgtype.Int8 `json:"project_id"`
+}
+
+func (q *Queries) ListTasksByProject(ctx context.Context, arg ListTasksByProjectParams) ([]Task, error) {
+	rows, err := q.db.Query(ctx, listTasksByProject, arg.UserID, arg.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Task
+	for rows.Next() {
+		var i Task
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Title,
+			&i.Description,
+			&i.Status,
+			&i.Priority,
+			&i.DueDate,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ProjectID,
 		); err != nil {
 			return nil, err
 		}
@@ -157,9 +205,10 @@ SET
   description = COALESCE($2, description),
   status      = COALESCE($3, status),
   priority    = COALESCE($4, priority),
-  due_date    = COALESCE($5, due_date)
-WHERE id = $6 AND user_id = $7
-RETURNING id, user_id, title, description, status, priority, due_date, created_at, updated_at
+  due_date    = COALESCE($5, due_date),
+  project_id  = COALESCE($6, project_id)
+WHERE id = $7 AND user_id = $8
+RETURNING id, user_id, title, description, status, priority, due_date, created_at, updated_at, project_id
 `
 
 type UpdateTaskParams struct {
@@ -168,6 +217,7 @@ type UpdateTaskParams struct {
 	Status      pgtype.Text        `json:"status"`
 	Priority    pgtype.Int4        `json:"priority"`
 	DueDate     pgtype.Timestamptz `json:"due_date"`
+	ProjectID   pgtype.Int8        `json:"project_id"`
 	ID          int64              `json:"id"`
 	UserID      int64              `json:"user_id"`
 }
@@ -179,6 +229,7 @@ func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) (Task, e
 		arg.Status,
 		arg.Priority,
 		arg.DueDate,
+		arg.ProjectID,
 		arg.ID,
 		arg.UserID,
 	)
@@ -193,6 +244,7 @@ func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) (Task, e
 		&i.DueDate,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ProjectID,
 	)
 	return i, err
 }
