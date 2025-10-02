@@ -2,21 +2,24 @@ package handler
 
 import (
 	"database/sql"
+	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/pavelc4/auriya-todolist-go/internal/cache"
 	db "github.com/pavelc4/auriya-todolist-go/internal/db/sqlc"
 	"github.com/pavelc4/auriya-todolist-go/internal/http/repository"
 )
 
 type TaskHandler struct {
 	Store *repository.Store
+	cache *cache.Service
 }
 
-func NewTaskHandler(store *repository.Store) *TaskHandler {
-	return &TaskHandler{Store: store}
+func NewTaskHandler(store *repository.Store, cache *cache.Service) *TaskHandler {
+	return &TaskHandler{Store: store, cache: cache}
 }
 
 // @Summary      Create a new task
@@ -76,6 +79,10 @@ func (h *TaskHandler) Create(c *gin.Context) {
 		UpdatedAt:   task.UpdatedAt.Time,
 	}
 
+	// Set cache
+	cacheKey := fmt.Sprintf("task:%d", task.ID)
+	h.cache.Set(cacheKey, task, 5*time.Minute)
+
 	c.JSON(http.StatusCreated, resp)
 }
 
@@ -86,6 +93,19 @@ func (h *TaskHandler) Get(c *gin.Context) {
 	if err := c.ShouldBindUri(&uri); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_id", "detail": err.Error()})
 		return
+	}
+
+	// Check cache first
+	cacheKey := fmt.Sprintf("task:%d", uri.ID)
+	if cached, found := h.cache.Get(cacheKey); found {
+		if task, ok := cached.(db.Task); ok {
+			// Verify user ID just in case
+			userID, _ := c.Get("userID")
+			if task.UserID == userID.(int64) {
+				c.JSON(http.StatusOK, task)
+				return
+			}
+		}
 	}
 
 	userID, _ := c.Get("userID")
@@ -104,6 +124,10 @@ func (h *TaskHandler) Get(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "db_error", "detail": err.Error()})
 		return
 	}
+
+	// Set cache
+	h.cache.Set(cacheKey, task, 5*time.Minute)
+
 	c.JSON(http.StatusOK, task)
 }
 
@@ -121,6 +145,7 @@ func (h *TaskHandler) List(c *gin.Context) {
 		dueBefore = pgtype.Timestamptz{Time: *q.DueBefore, Valid: true}
 	}
 
+	// Caching for list endpoints is more complex, skipping for now.
 	items, err := h.Store.Queries.ListTasks(c.Request.Context(), db.ListTasksParams{
 		UserID:    userID.(int64),
 		Status:    q.Status,
@@ -191,6 +216,11 @@ func (h *TaskHandler) Update(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "db_error", "detail": err.Error()})
 		return
 	}
+
+	// Invalidate cache
+	cacheKey := fmt.Sprintf("task:%d", uri.ID)
+	h.cache.Delete(cacheKey)
+
 	c.JSON(http.StatusOK, task)
 }
 
@@ -214,5 +244,10 @@ func (h *TaskHandler) Delete(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "db_error", "detail": err.Error()})
 		return
 	}
+
+	// Invalidate cache
+	cacheKey := fmt.Sprintf("task:%d", uri.ID)
+	h.cache.Delete(cacheKey)
+
 	c.Status(http.StatusNoContent)
 }

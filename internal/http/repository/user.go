@@ -3,10 +3,12 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pavelc4/auriya-todolist-go/internal/cache"
 )
 
 type User struct {
@@ -24,14 +26,22 @@ type User struct {
 }
 
 type UserRepository struct {
-	db *pgxpool.Pool
+	db    *pgxpool.Pool
+	cache *cache.Service
 }
 
-func NewUserRepository(db *pgxpool.Pool) *UserRepository {
-	return &UserRepository{db: db}
+func NewUserRepository(db *pgxpool.Pool, cache *cache.Service) *UserRepository {
+	return &UserRepository{db: db, cache: cache}
 }
 
 func (r *UserRepository) GetByProviderUserID(ctx context.Context, provider, providerUserID string) (*User, error) {
+	cacheKey := fmt.Sprintf("user:provider:%s:%s", provider, providerUserID)
+	if cached, found := r.cache.Get(cacheKey); found {
+		if user, ok := cached.(*User); ok {
+			return user, nil
+		}
+	}
+
 	const query = `
 		SELECT id, email, full_name, avatar_url, provider, provider_user_id, password, age, created_at, updated_at, last_login
 		FROM users
@@ -59,10 +69,22 @@ func (r *UserRepository) GetByProviderUserID(ctx context.Context, provider, prov
 		}
 		return nil, err
 	}
+
+	r.cache.Set(cacheKey, user, 5*time.Minute)
+	r.cache.Set(fmt.Sprintf("user:email:%s", user.Email), user, 5*time.Minute)
+	r.cache.Set(fmt.Sprintf("user:id:%d", user.ID), user, 5*time.Minute)
+
 	return user, nil
 }
 
 func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*User, error) {
+	cacheKey := fmt.Sprintf("user:email:%s", email)
+	if cached, found := r.cache.Get(cacheKey); found {
+		if user, ok := cached.(*User); ok {
+			return user, nil
+		}
+	}
+
 	const query = `
 		SELECT id, email, full_name, avatar_url, provider, provider_user_id, password, age, created_at, updated_at, last_login
 		FROM users
@@ -90,6 +112,11 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*User, e
 		}
 		return nil, err
 	}
+
+	r.cache.Set(cacheKey, user, 5*time.Minute)
+	r.cache.Set(fmt.Sprintf("user:provider:%s:%s", user.Provider, user.ProviderUserID), user, 5*time.Minute)
+	r.cache.Set(fmt.Sprintf("user:id:%d", user.ID), user, 5*time.Minute)
+
 	return user, nil
 }
 
@@ -108,6 +135,15 @@ func (r *UserRepository) Create(ctx context.Context, user *User) error {
 		user.Password,
 		user.Age,
 	).Scan(&user.ID, &user.CreatedAt, &user.UpdatedAt)
+
+	if err == nil {
+		r.cache.Set(fmt.Sprintf("user:id:%d", user.ID), user, 5*time.Minute)
+		r.cache.Set(fmt.Sprintf("user:email:%s", user.Email), user, 5*time.Minute)
+		if user.Provider != "" && user.ProviderUserID != "" {
+			r.cache.Set(fmt.Sprintf("user:provider:%s:%s", user.Provider, user.ProviderUserID), user, 5*time.Minute)
+		}
+	}
+
 	return err
 }
 
@@ -116,5 +152,9 @@ func (r *UserRepository) UpdateLastLogin(ctx context.Context, userID int64) erro
 		UPDATE users SET last_login = NOW(), updated_at = NOW() WHERE id = $1
 	`
 	_, err := r.db.Exec(ctx, query, userID)
+	if err == nil {
+		// Invalidate cache to reflect the new last_login time on next fetch
+		r.cache.Delete(fmt.Sprintf("user:id:%d", userID))
+	}
 	return err
 }

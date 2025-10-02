@@ -30,6 +30,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/pavelc4/auriya-todolist-go/internal/cache"
 	"github.com/pavelc4/auriya-todolist-go/internal/config"
 	"github.com/pavelc4/auriya-todolist-go/internal/database"
 	"github.com/pavelc4/auriya-todolist-go/internal/http/repository"
@@ -53,12 +54,15 @@ func main() {
 	}
 	defer db.Close()
 
+	// Initialize cache service
+	cacheSvc := cache.NewService(5*time.Minute, 10*time.Minute)
+
 	googleConf := cfg.GoogleOAuthConfig
 	githubConf := cfg.GitHubOAuthConfig
-	userRepo := repository.NewUserRepository(db)
+	userRepo := repository.NewUserRepository(db, cacheSvc)
 	jwtService := service.NewJWTService(os.Getenv("JWT_SECRET"))
 
-	r := router.New(db, googleConf, githubConf, userRepo, jwtService)
+	r := router.New(db, googleConf, githubConf, userRepo, jwtService, cacheSvc)
 
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.AppPort),
