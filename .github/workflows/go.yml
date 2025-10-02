@@ -18,17 +18,32 @@ jobs:
       with:
         go-version: 'stable'
 
-    - name: Build
-      run: go build -ldflags="-s -w" -v -o auriya-todolist-go ./cmd/server
-
-    - name: Compress binary
-      run: tar -czvf auriya-todolist-go.tar.gz auriya-todolist-go
-
-    - name: Test
+    - name: Run tests
       run: go test -v ./...
 
-    - name: Upload build artifact
+    - name: Build (Linux amd64)
+      run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o auriya-todolist-go ./cmd/server
+
+    - name: Compress normal binary (tar.gz)
+      run: tar -czvf auriya-todolist-go.tar.gz auriya-todolist-go
+
+    - name: Install UPX
+      run: sudo apt-get update && sudo apt-get install -y upx
+
+    - name: Compress binary with UPX
+      run: |
+        cp auriya-todolist-go auriya-todolist-go-upx
+        upx --best --lzma -9 auriya-todolist-go-upx
+        tar -czvf auriya-todolist-go-upx.tar.gz auriya-todolist-go-upx
+
+    - name: Upload normal artifact
       uses: actions/upload-artifact@v4
       with:
         name: auriya-todolist-go
         path: ./auriya-todolist-go.tar.gz
+
+    - name: Upload UPX artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: auriya-todolist-go-upx
+        path: ./auriya-todolist-go-upx.tar.gz
