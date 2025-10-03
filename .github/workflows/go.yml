@@ -11,39 +11,77 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Set up Go (latest stable)
-      uses: actions/setup-go@v4
-      with:
-        go-version: 'stable'
+      - name: Set up Go (latest stable)
+        uses: actions/setup-go@v4
+        with:
+          go-version: 'stable'
 
-    - name: Run tests
-      run: go test -v ./...
+      - name: Run tests
+        run: go test -v ./...
 
-    - name: Build (Linux amd64)
-      run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o auriya-todolist-go ./cmd/server
+      - name: Build (Linux amd64)
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o auriya ./cmd/server
 
-    - name: Compress normal binary (tar.gz)
-      run: tar -czvf auriya-todolist-go.tar.gz auriya-todolist-go
+      - name: Compress normal binary (tar.gz)
+        run: tar -czvf auriya.tar.gz auriya
 
-    - name: Install UPX
-      run: sudo apt-get update && sudo apt-get install -y upx
+      - name: Install UPX
+        run: sudo apt-get update && sudo apt-get install -y upx
 
-    - name: Compress binary with UPX
-      run: |
-        cp auriya-todolist-go auriya-todolist-go-upx
-        upx --best --lzma -9 auriya-todolist-go-upx
-        tar -czvf auriya-todolist-go-upx.tar.gz auriya-todolist-go-upx
+      - name: Compress binary with UPX
+        run: |
+          cp auriya auriya-upx
+          upx --best --lzma -9 auriya-upx
+          tar -czvf auriya-upx.tar.gz auriya-upx
 
-    - name: Upload normal artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: auriya-todolist-go
-        path: ./auriya-todolist-go.tar.gz
+      - name: Upload normal artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: auriya
+          path: ./auriya.tar.gz
 
-    - name: Upload UPX artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: auriya-todolist-go-upx
-        path: ./auriya-todolist-go-upx.tar.gz
+      - name: Upload UPX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: auriya-upx
+          path: ./auriya-upx.tar.gz
+
+      - name: Send Telegram success notification
+        if: success()
+        run: |
+          MESSAGE=" Build sukses untuk *Auriya*%0A%0A\
+          Repo: [${{ github.repository }}](https://github.com/${{ github.repository }})%0A\
+          Commit: [${{ github.sha }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }})%0A\
+          Run: [#${{ github.run_number }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage" \
+            -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d text="$MESSAGE" \
+            -d parse_mode=Markdown
+
+      - name: Send binaries to Telegram
+        if: success()
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendDocument" \
+            -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -F document=@auriya.tar.gz
+
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendDocument" \
+            -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -F document=@auriya-upx.tar.gz
+
+      - name: Send Telegram failure notification
+        if: failure()
+        run: |
+          MESSAGE="Build *FAILED* untuk *Auriya*%0A%0A\
+          Repo: [${{ github.repository }}](https://github.com/${{ github.repository }})%0A\
+          Commit: [${{ github.sha }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }})%0A\
+          Run: [#${{ github.run_number }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage" \
+            -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d text="$MESSAGE" \
+            -d parse_mode=Markdown
