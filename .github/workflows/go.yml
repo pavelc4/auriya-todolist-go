@@ -49,38 +49,30 @@ jobs:
           name: auriya-upx
           path: ./auriya-upx.tar.gz
 
-      - name: Send Telegram success notification
+      - name: Send Telegram notification (success)
         if: success()
         run: |
-          MESSAGE=" Build sukses untuk *Auriya*%0A%0A\
-          Repo: [${{ github.repository }}](https://github.com/${{ github.repository }})%0A\
-          Commit: [${{ github.sha }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }})%0A\
-          Run: [#${{ github.run_number }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          MESSAGE="Build *SUCCESS* for Auriya%0A\ Binary (Normal & UPX) attached below."
 
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage" \
-            -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-            -d text="$MESSAGE" \
-            -d parse_mode=Markdown
+        # Normal Binary
+         curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendDocument" \
+         -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+         -F caption="$MESSAGE (Normal)" \
+         -F parse_mode=Markdown \
+         -F document=@auriya.tar.gz
+  
+        # UPX Binary
+         curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendDocument" \
+         -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+         -F caption="$MESSAGE (UPX)" \
+         -F parse_mode=Markdown \
+         -F document=@auriya-upx.tar.gz
 
-      - name: Send binaries to Telegram
-        if: success()
-        run: |
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendDocument" \
-            -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-            -F document=@auriya.tar.gz
-
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendDocument" \
-            -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-            -F document=@auriya-upx.tar.gz
-
-      - name: Send Telegram failure notification
+      - name: Send Telegram notification (failure)
         if: failure()
         run: |
-          MESSAGE="Build *FAILED* untuk *Auriya*%0A%0A\
-          Repo: [${{ github.repository }}](https://github.com/${{ github.repository }})%0A\
-          Commit: [${{ github.sha }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }})%0A\
-          Run: [#${{ github.run_number }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
-
+          MESSAGE="Build *FAILED* for Auriya"
+          
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage" \
             -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
             -d text="$MESSAGE" \
